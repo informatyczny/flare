@@ -1,0 +1,17 @@
+# Backend
+backend/data/keypairs.json
+backend/.venv
+backend/.env
+backend/.ruff_cache
+
+# Extension
+extension/dist
+extension/node_modules
+
+# General Python
+__pycache__/
+*.pyc
+.DS_Store
+
+# Logs
+**/logs/**
