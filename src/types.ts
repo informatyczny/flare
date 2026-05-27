@@ -8,46 +8,26 @@ export interface EventPayload {
   cover_url?: string;
   source_url: string;
   city?: string;
-  volunteer_pubkey: string;
-  signature: string;
-}
-
-export interface VolunteerIdentity {
-  pubkey: string;
-  privateKey: string;
-  nickname: string;
-  status: "unregistered" | "probation" | "trusted" | "banned";
-  registeredAt?: number;
 }
 
 export interface ExtensionConfig {
-  backendUrl: string;
+  relays: string[];
+}
+
+export interface KeyState {
+  pubkey: string;
+  secretKey: string;  // hex, stored locally only
 }
 
 export interface StatusData {
   lastEvent?: string;
-  lastStatus?: "published" | "duplicate" | "queued" | "error";
+  lastStatus?: "published" | "duplicate" | "error";
   lastTime?: number;
-}
-
-export interface RegistrationRequest {
-  inviteToken: string;
-  nickname: string;
-}
-
-export interface ImportKeyRequest {
-  privateKey: string; // hex or nsec1…
+  relayResults?: Record<string, "ok" | "error">;
 }
 
 export type ContentMessage =
   | { type: "FB_EVENT"; payload: EventPayload }
-  | { type: "GET_STATUS" }
-  | { type: "REGISTER"; request: RegistrationRequest }
-  | { type: "IMPORT_KEY"; request: ImportKeyRequest }
-  | { type: "GET_VOLUNTEER" };
+  | { type: "GET_STATUS" };
 
-export type BackgroundResponse =
-  | { ok: true }
-  | StatusData
-  | { volunteer: VolunteerIdentity; nsec: string }
-  | { status: string; trust_status?: string };
+export type BackgroundResponse = { ok: true } | StatusData;

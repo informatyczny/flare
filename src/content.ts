@@ -2,12 +2,17 @@ import type { EventPayload } from "./types";
 
 type FbRaw = Record<string, unknown>;
 
-// Inject injected.js into the page's main world so it can patch XHR/fetch.
-function injectPageScript(): void {
-  const src = chrome.runtime.getURL("dist/injected.js");
-  const script = document.createElement("script");
-  script.src = src;
-  (document.head ?? document.documentElement).appendChild(script);
+// Ask the background service worker to inject the main-world patcher via
+// chrome.scripting.executeScript({ world: "MAIN" }), which bypasses page CSP entirely.
+// Returns the random channel name the patcher will use to fire events.
+async function injectPageScript(): Promise<string> {
+  const channel = Math.random().toString(36).slice(2);
+  try {
+    await chrome.runtime.sendMessage({ type: "INJECT_MAIN_WORLD", channel });
+  } catch {
+    // Context invalidated or background unavailable — events won't fire.
+  }
+  return channel;
 }
 
 // --- Payload builders ---
@@ -107,10 +112,18 @@ function scoreRaw(raw: FbRaw): number {
   return s;
 }
 
+function safeSend(msg: unknown): void {
+  try {
+    chrome.runtime.sendMessage(msg);
+  } catch {
+    // Extension context invalidated after reload — page must be refreshed.
+  }
+}
+
 // --- Main ---
 
 async function main(): Promise<void> {
-  injectPageScript();
+  const channel = await injectPageScript();
 
   const submittedIds = new Set<string>();
   type Pending = { node: FbRaw; score: number; timer: ReturnType<typeof setTimeout> };
@@ -123,13 +136,16 @@ async function main(): Promise<void> {
     if (submittedIds.has(id)) return;
     submittedIds.add(id);
     const payload = buildPayload(p.node);
-    chrome.runtime.sendMessage({ type: "FB_EVENT", payload });
-    console.log("[FBE] Captured event:", payload.title);
+    safeSend({ type: "FB_EVENT", payload });
+    console.log("[FLARE] Captured event:", payload.title);
   }
+
+  const DROPPED_NAMES = new Set(["Chats", "Notifications"]);
 
   function submit(raw: FbRaw): void {
     const id = String(raw.id);
     if (submittedIds.has(id)) return;
+    if (typeof raw.name === "string" && DROPPED_NAMES.has(raw.name)) return;
 
     // Only process events that match the specific event page we're on.
     // This prevents stub nodes from listing-page responses polluting submissions.
@@ -149,7 +165,7 @@ async function main(): Promise<void> {
     }
   }
 
-  document.addEventListener("__fb_event__", (e: Event) => {
+  document.addEventListener(channel, (e: Event) => {
     submit((e as CustomEvent<FbRaw>).detail);
   });
 
@@ -161,13 +177,13 @@ async function main(): Promise<void> {
     setTimeout(() => {
       if (submittedIds.has(id) || pendingNodes.has(id)) return;
       const payload = scrapeFromDOM();
-      if (payload) {
+      if (payload && !DROPPED_NAMES.has(payload.title)) {
         submittedIds.add(id);
-        chrome.runtime.sendMessage({ type: "FB_EVENT", payload });
-        console.log("[FBE] DOM-scraped event:", payload.title);
+        safeSend({ type: "FB_EVENT", payload });
+        console.log("[FLARE] DOM-scraped event:", payload.title);
       }
     }, 2000);
   });
 }
 
-main();
+main().catch(() => {});

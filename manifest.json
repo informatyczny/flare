@@ -3,7 +3,7 @@
   "name": "FLARE",
   "version": "1.0.0",
   "description": "Facebook Liberation And Relay of Events — passively captures Facebook events and publishes them to the Nostr protocol.",
-  "permissions": ["webRequest", "storage"],
+  "permissions": ["webRequest", "storage", "scripting"],
   "host_permissions": ["*://*.facebook.com/*"],
   "background": {
     "service_worker": "dist/background.js"
@@ -27,11 +27,5 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["dist/injected.js"],
-      "matches": ["*://*.facebook.com/*"]
-    }
-  ]
+  }
 }
