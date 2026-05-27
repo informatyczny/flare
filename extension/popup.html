@@ -6,7 +6,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 280px;
+      width: 320px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 13px;
       color: #222;
@@ -44,7 +44,8 @@
       cursor: pointer;
       align-self: flex-start;
     }
-    button:hover { background: #166fe5; }
+    button:hover:not(:disabled) { background: #166fe5; }
+    button:disabled { background: #999; cursor: not-allowed; }
     .status {
       padding: 7px 9px;
       border-radius: 4px;
@@ -55,9 +56,33 @@
     }
     .status.published { background: #e6f4ea; color: #1e7e34; }
     .status.duplicate { background: #fff8e1; color: #856404; }
+    .status.queued { background: #e3f2fd; color: #1565c0; }
     .status.error     { background: #fdecea; color: #c62828; }
     .divider { height: 1px; background: #eee; }
     .section-title { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    #registrationForm { display: none; }
+    #mainSection { display: none; }
+    details { border-top: 1px solid #eee; padding-top: 10px; }
+    details summary { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; user-select: none; }
+    details summary:hover { color: #555; }
+    details .inner { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+    .volunteer-info {
+      background: #f0f2f5;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .info-row { display: flex; gap: 4px; margin-bottom: 4px; }
+    .info-label { font-weight: 600; min-width: 60px; }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-badge.probation { background: #fff3e0; color: #e65100; }
+    .status-badge.trusted { background: #e6f4ea; color: #1e7e34; }
   </style>
 </head>
 <body>
@@ -68,15 +93,59 @@
     FLARE
   </div>
   <div class="body">
-    <span class="section-title">Last captured</span>
-    <div id="status" class="status idle">No events captured yet.</div>
-    <div class="divider"></div>
-    <span class="section-title">Settings</span>
-    <label>
-      Backend URL
-      <input id="backendUrl" type="text" placeholder="http://localhost:8000" />
-    </label>
-    <button id="save">Save</button>
+    <div id="registrationForm">
+      <span class="section-title">Register to Share Events</span>
+      <label>
+        Invite Token
+        <input id="inviteToken" type="text" placeholder="Paste your invite token" />
+      </label>
+      <label>
+        Your Nickname
+        <input id="nickname" type="text" placeholder="e.g., Jane or Community Scout" />
+      </label>
+      <button id="registerBtn">Register</button>
+
+      <details>
+        <summary>Already have a key?</summary>
+        <div class="inner">
+          <label>
+            Private Key
+            <input id="importKey" type="password" placeholder="nsec1… or 64-char hex" autocomplete="off" />
+          </label>
+          <button id="importBtn">Import Key</button>
+        </div>
+      </details>
+    </div>
+
+    <div id="mainSection">
+      <div class="volunteer-info">
+        <div class="info-row">
+          <span class="info-label">Volunteer:</span>
+          <span id="volunteerName">Anonymous</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Status:</span>
+          <span id="volunteerStatus" class="status-badge probation">probation</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Pubkey:</span>
+          <span id="volunteerPubkey" style="font-family: monospace;">...</span>
+        </div>
+      </div>
+
+      <button id="copyKeyBtn" style="background:#555;">Copy private key (nsec)</button>
+
+      <div class="divider"></div>
+      <span class="section-title">Last captured</span>
+      <div id="status" class="status idle">No events captured yet.</div>
+      <div class="divider"></div>
+      <span class="section-title">Settings</span>
+      <label>
+        Backend URL
+        <input id="backendUrl" type="text" placeholder="http://localhost:8000" />
+      </label>
+      <button id="save">Save</button>
+    </div>
   </div>
   <script src="dist/popup.js"></script>
 </body>

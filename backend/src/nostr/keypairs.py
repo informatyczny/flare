@@ -3,7 +3,7 @@ from pathlib import Path
 
 from nostr_sdk import Keys
 
-_DATA_FILE = Path(__file__).parent.parent / "data" / "keypairs.json"
+_DATA_FILE = Path(__file__).parent.parent.parent / "data" / "keypairs.json"
 _keys: Keys | None = None
 
 
