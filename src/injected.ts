@@ -5,36 +5,39 @@
 type FbRaw = Record<string, unknown>;
 
 function isEventNode(o: FbRaw): boolean {
-  // Facebook tags every GraphQL object with __typename — this is the reliable check.
-  if (o.__typename === "Event") {
-    return typeof o.id === "string" && typeof o.name === "string";
+  // Always require start_timestamp — navigation/chat elements ("Chats", etc.) lack it.
+  if (
+    typeof o.id !== "string" ||
+    typeof o.name !== "string" ||
+    typeof o.start_timestamp !== "number"
+  ) {
+    return false;
   }
-  // Fallback for responses that omit __typename: require event_place, which is
-  // specific to events and absent from chats, users, groups, etc.
-  return (
-    typeof o.id === "string" &&
-    typeof o.name === "string" &&
-    typeof o.start_timestamp === "number" &&
-    o.event_place !== undefined
-  );
+  if (o.__typename === "Event") return true;
+  // Fallback for responses that omit __typename: require event_place as extra signal.
+  return o.event_place !== undefined;
 }
 
-function findEventNode(obj: unknown, depth: number): FbRaw | null {
-  if (depth > 10 || obj === null || typeof obj !== "object") return null;
+function collectEventNodes(obj: unknown, depth: number): FbRaw[] {
+  if (depth > 10 || obj === null || typeof obj !== "object") return [];
   if (Array.isArray(obj)) {
-    for (const item of obj) {
-      const found = findEventNode(item, depth + 1);
-      if (found) return found;
-    }
-    return null;
+    return (obj as unknown[]).flatMap((item) =>
+      collectEventNodes(item, depth + 1)
+    );
   }
   const o = obj as FbRaw;
-  if (isEventNode(o)) return o;
-  for (const key of Object.keys(o)) {
-    const found = findEventNode(o[key], depth + 1);
-    if (found) return found;
-  }
-  return null;
+  if (isEventNode(o)) return [o];
+  return Object.values(o).flatMap((v) => collectEventNodes(v, depth + 1));
+}
+
+function scoreNode(o: FbRaw): number {
+  let s = 0;
+  if (o.event_place !== undefined) s += 4;
+  if (o.cover !== undefined) s += 2;
+  if (o.description !== undefined) s += 2;
+  if (typeof o.end_timestamp === "number") s += 1;
+  if (typeof o.url === "string") s += 1;
+  return s;
 }
 
 function tryDispatch(text: string): void {
@@ -43,16 +46,26 @@ function tryDispatch(text: string): void {
     ? text.split("\n").filter((l) => l.trim().startsWith("{"))
     : [text];
 
+  const urlMatch = window.location.pathname.match(/\/events\/(\d+)/);
+  const pageEventId = urlMatch?.[1];
+
   for (const chunk of chunks) {
     try {
       const data: unknown = JSON.parse(chunk);
-      const node = findEventNode(data, 0);
-      if (node) {
-        document.dispatchEvent(
-          new CustomEvent("__fb_event__", { detail: node })
-        );
-        return;
-      }
+      const nodes = collectEventNodes(data, 0);
+      if (!nodes.length) continue;
+
+      // Prefer nodes whose id matches the current page's event ID.
+      const idMatches = pageEventId
+        ? nodes.filter((n) => String(n.id) === pageEventId)
+        : nodes;
+      const pool = idMatches.length ? idMatches : nodes;
+
+      // Among candidates, pick the richest (most event-specific fields).
+      const best = pool.reduce((a, b) => (scoreNode(a) >= scoreNode(b) ? a : b));
+
+      document.dispatchEvent(new CustomEvent("__fb_event__", { detail: best }));
+      return;
     } catch {
       // ignore parse errors
     }

@@ -97,33 +97,69 @@ function scrapeFromDOM(): EventPayload | null {
   };
 }
 
+function scoreRaw(raw: FbRaw): number {
+  let s = 0;
+  if (raw.event_place !== undefined) s += 4;
+  if (raw.cover !== undefined) s += 2;
+  if (raw.description !== undefined) s += 2;
+  if (raw.end_timestamp !== undefined) s += 1;
+  if (typeof raw.url === "string") s += 1;
+  return s;
+}
+
 // --- Main ---
 
 async function main(): Promise<void> {
   injectPageScript();
 
   const submittedIds = new Set<string>();
+  type Pending = { node: FbRaw; score: number; timer: ReturnType<typeof setTimeout> };
+  const pendingNodes = new Map<string, Pending>();
+
+  function flush(id: string): void {
+    const p = pendingNodes.get(id);
+    if (!p) return;
+    pendingNodes.delete(id);
+    if (submittedIds.has(id)) return;
+    submittedIds.add(id);
+    const payload = buildPayload(p.node);
+    chrome.runtime.sendMessage({ type: "FB_EVENT", payload });
+    console.log("[FBE] Captured event:", payload.title);
+  }
 
   function submit(raw: FbRaw): void {
     const id = String(raw.id);
     if (submittedIds.has(id)) return;
-    submittedIds.add(id);
-    const payload = buildPayload(raw);
-    chrome.runtime.sendMessage({ type: "FB_EVENT", payload });
-    console.log("[FBE] Captured event:", payload.title);
+
+    // Only process events that match the specific event page we're on.
+    // This prevents stub nodes from listing-page responses polluting submissions.
+    const urlMatch = window.location.pathname.match(/\/events\/(\d+)/);
+    if (!urlMatch || urlMatch[1] !== id) return;
+
+    const score = scoreRaw(raw);
+    const existing = pendingNodes.get(id);
+
+    if (existing) {
+      clearTimeout(existing.timer);
+      // Keep the richer node; reset the debounce window.
+      const best = score > existing.score ? { node: raw, score } : { node: existing.node, score: existing.score };
+      pendingNodes.set(id, { ...best, timer: setTimeout(() => flush(id), 1500) });
+    } else {
+      pendingNodes.set(id, { node: raw, score, timer: setTimeout(() => flush(id), 1500) });
+    }
   }
 
   document.addEventListener("__fb_event__", (e: Event) => {
     submit((e as CustomEvent<FbRaw>).detail);
   });
 
-  // DOM fallback fires 2 seconds after page load, giving XHR interception priority.
+  // DOM fallback fires 2 seconds after page load if nothing was captured via XHR.
   window.addEventListener("load", () => {
     const urlMatch = window.location.pathname.match(/\/events\/(\d+)/);
     if (!urlMatch) return;
     const id = urlMatch[1];
     setTimeout(() => {
-      if (submittedIds.has(id)) return;
+      if (submittedIds.has(id) || pendingNodes.has(id)) return;
       const payload = scrapeFromDOM();
       if (payload) {
         submittedIds.add(id);
