@@ -1,111 +1,92 @@
-import json
+from __future__ import annotations
+
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from admin.auth import require_admin
-from database import get_db
 from lib.loggers import api_logger
-from nostr import publish_event
-from volunteers.models import QueuedEventSchema, VolunteerStatus
-from volunteers.repository import (
-    approve_queued_event,
+from volunteers.database import get_db
+from volunteers.models import Admin
+from volunteers.trust import (
+    add_volunteer,
+    ban_volunteer,
     get_all_volunteers,
-    get_queued_events,
-    mark_event_published,
-    reject_queued_event,
-    set_volunteer_status,
+    get_whitelist,
+    normalize_pubkey,
+    unban_volunteer,
 )
 
 router = APIRouter()
 
 
-@router.get("/check")
-def check_admin(pubkey: str, db: Session = Depends(get_db)) -> dict:
-    from admin.models import AdminORM
-
-    is_admin = db.query(AdminORM).filter(AdminORM.pubkey == pubkey).first() is not None
+@router.get("/admin/check")
+def check_admin(pubkey: str, db: Session = Depends(get_db)) -> dict[str, bool]:
+    is_admin = db.query(Admin).filter(Admin.pubkey == pubkey).first() is not None
     return {"is_admin": is_admin}
 
 
-@router.get("/volunteers")
-def list_volunteers(
-    db: Session = Depends(get_db),
+@router.get("/trust/whitelist")
+def whitelist(db: Session = Depends(get_db)) -> dict[str, list[str]]:
+    return {"pubkeys": get_whitelist(db)}
+
+
+class AddVolunteerRequest(BaseModel):
+    pubkey: str
+
+
+@router.post("/admin/volunteers", status_code=201)
+def add_volunteer_endpoint(
+    body: AddVolunteerRequest,
     _admin: str = Depends(require_admin),
-) -> dict:
-    return {"volunteers": get_all_volunteers(db)}
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    pubkey = normalize_pubkey(body.pubkey)
+    if pubkey is None:
+        raise HTTPException(status_code=400, detail="Invalid pubkey format")
+    if not add_volunteer(db, pubkey):
+        raise HTTPException(status_code=409, detail="Volunteer already registered")
+    api_logger.info("Admin added volunteer pubkey=%s", pubkey)
+    return {"pubkey": pubkey, "status": "active"}
 
 
-class StatusUpdate(BaseModel):
-    status: VolunteerStatus
+class BanRequest(BaseModel):
+    cascade: bool = False
 
 
-@router.post("/volunteers/{pubkey}/status")
-def update_volunteer_status(
+@router.post("/admin/ban/{pubkey}")
+def ban(
     pubkey: str,
-    body: StatusUpdate,
-    db: Session = Depends(get_db),
+    body: BanRequest,
     _admin: str = Depends(require_admin),
-) -> dict:
-    if not set_volunteer_status(db, pubkey, body.status):
+    db: Session = Depends(get_db),
+) -> dict[str, list[str]]:
+    if db.query(Admin).filter(Admin.pubkey == pubkey).first():
+        raise HTTPException(status_code=403, detail="Cannot ban an admin")
+    banned = ban_volunteer(db, pubkey, body.cascade)
+    if not banned:
         raise HTTPException(status_code=404, detail="Volunteer not found")
-    api_logger.info("Volunteer status updated pubkey=%s status=%s", pubkey, body.status)
-    return {"status": body.status}
+    api_logger.info("Banned pubkeys=%s cascade=%s", banned, body.cascade)
+    return {"banned": banned}
 
 
-@router.get("/queue")
-async def get_queue(
-    db: Session = Depends(get_db),
+@router.post("/admin/unban/{pubkey}")
+def unban(
+    pubkey: str,
     _admin: str = Depends(require_admin),
-) -> dict:
-    events = get_queued_events(db)
-    return {
-        "events": [QueuedEventSchema.model_validate(e).model_dump() for e in events]
-    }
-
-
-@router.post("/queue/{facebook_id}/approve")
-async def approve_event(
-    facebook_id: str,
     db: Session = Depends(get_db),
+) -> dict[str, str]:
+    if not unban_volunteer(db, pubkey):
+        raise HTTPException(status_code=404, detail="Volunteer not found")
+    api_logger.info("Unbanned pubkey=%s", pubkey)
+    return {"status": "active"}
+
+
+@router.get("/admin/volunteers")
+def list_volunteers(
     _admin: str = Depends(require_admin),
-) -> dict:
-    result = approve_queued_event(db, facebook_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Event not in queue")
-
-    try:
-        event_data = json.loads(result["event_data"])
-        nostr_id = await publish_event(
-            facebook_id=event_data["facebook_id"],
-            title=event_data["title"],
-            start=event_data["start"],
-            end=event_data.get("end"),
-            description=event_data.get("description"),
-            location=event_data.get("location"),
-            cover_url=event_data.get("cover_url"),
-            source_url=event_data["source_url"],
-            city=event_data.get("city"),
-        )
-        mark_event_published(db, facebook_id, result["volunteer_pubkey"], nostr_id)
-        api_logger.info("Event approved and published facebook_id=%s", facebook_id)
-        return {"status": "approved", "nostr_id": nostr_id}
-    except Exception as e:
-        api_logger.error(
-            "Failed to publish approved event facebook_id=%s: %s", facebook_id, e
-        )
-        raise HTTPException(status_code=500, detail="Failed to publish event")
-
-
-@router.post("/queue/{facebook_id}/reject")
-async def reject_event(
-    facebook_id: str,
     db: Session = Depends(get_db),
-    _admin: str = Depends(require_admin),
-) -> dict:
-    if not reject_queued_event(db, facebook_id):
-        raise HTTPException(status_code=404, detail="Event not in queue")
-
-    api_logger.info("Event rejected facebook_id=%s", facebook_id)
-    return {"status": "rejected"}
+) -> dict[str, Any]:
+    return {"volunteers": get_all_volunteers(db)}

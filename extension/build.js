@@ -4,7 +4,6 @@ const entryPoints = [
   "src/background.ts",
   "src/content.ts",
   "src/popup.ts",
-  "src/injected.ts",
 ];
 
 const watch = process.argv.includes("--watch");

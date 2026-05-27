@@ -1,18 +1,32 @@
 services:
+  relay:
+    image: hoytech/strfry:latest
+    volumes:
+      - ./strfry.conf:/etc/strfry.conf:ro
+      - ./scripts/relay_policy.py:/app/scripts/relay_policy.py:ro
+      - relay-data:/app/strfry-db
+    entrypoint:
+      - sh
+      - -c
+      - chmod +x /app/scripts/relay_policy.py && exec strfry --config=/etc/strfry.conf relay
+    # Not exposed to host — nginx proxies WebSocket connections internally
+
   backend:
     build: ./backend
-    restart: unless-stopped
-    env_file: ./backend/.env
     volumes:
-      - ./flare-data:/app/data
-      - ./logs:/app/logs
-    expose:
-      - "8000"
+      - backend-data:/app/data
+      - backend-logs:/app/logs
+    # Not exposed to host — nginx proxies /api/* internally
 
   frontend:
     build: ./frontend
-    restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
+      - relay
       - backend
+
+volumes:
+  relay-data:
+  backend-data:
+  backend-logs:

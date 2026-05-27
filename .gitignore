@@ -1,5 +1,5 @@
 # Backend
-backend/data/keypairs.json
+backend/data/
 backend/.venv
 backend/.env
 backend/.ruff_cache
