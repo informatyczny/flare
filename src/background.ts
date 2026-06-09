@@ -5,9 +5,7 @@ import { mainWorldPatcher } from "./patcher";
 import type { EventPayload, ExtensionConfig, StatusData, KeyState } from "./types";
 
 const DEFAULT_RELAYS: string[] = [
-  "wss://relay.damus.io",
-  "wss://nos.lol",
-  "wss://relay.nostr.band",
+  "wss://relay.informatyczny.org",
 ];
 
 function hexToBytes(hex: string): Uint8Array {
