@@ -2,6 +2,7 @@
 
 A decentralized, open city events platform that bridges Facebook event data to the Nostr protocol. Volunteers install a browser extension that passively captures Facebook events, signs them with their own Nostr keypair, and publishes them directly to any Nostr relay they choose.
 
+[![Commitizen friendly](https://img.shields.io/badge/commitizen-friendly-brightgreen.svg)](http://commitizen.github.io/cz-cli/)
 ---
 
 ## Setup
