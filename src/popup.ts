@@ -4,9 +4,7 @@ import { decode } from "nostr-tools/nip19";
 import type { ExtensionConfig, KeyState, StatusData } from "./types";
 
 const DEFAULT_RELAYS: string[] = [
-  "wss://relay.damus.io",
-  "wss://nos.lol",
-  "wss://relay.nostr.band",
+  "wss://relay.informatyczny.org",
 ];
 
 function el<T extends HTMLElement>(id: string): T {
